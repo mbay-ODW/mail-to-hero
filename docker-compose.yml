@@ -1,0 +1,32 @@
+services:
+  mail-to-hero:
+    image: ghcr.io/mbay-odw/mail-to-hero:latest
+    container_name: mail-to-hero
+    restart: unless-stopped
+    environment:
+      # IMAP
+      - IMAP_HOST=${IMAP_HOST}
+      - IMAP_PORT=${IMAP_PORT:-993}
+      - IMAP_SSL=${IMAP_SSL:-true}
+      - IMAP_FOLDER=${IMAP_FOLDER:-INBOX}
+      - EMAIL_USER=${EMAIL_USER}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+
+      # Subject filter (web-form mailer always uses this prefix)
+      - SUBJECT_PREFIX=${SUBJECT_PREFIX:-Anfrage von:}
+
+      # HERO
+      - HERO_API_KEY=${HERO_API_KEY}
+      - HERO_GRAPHQL_URL=${HERO_GRAPHQL_URL:-https://login.hero-software.de/api/external/v7/graphql}
+
+      # Behaviour
+      - POLL_INTERVAL_SECONDS=${POLL_INTERVAL_SECONDS:-60}
+      - DRY_RUN=${DRY_RUN:-false}
+      - MARK_AS_READ=${MARK_AS_READ:-true}
+      - DB_PATH=/data/state.db
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - mail_to_hero_data:/data
+
+volumes:
+  mail_to_hero_data:
