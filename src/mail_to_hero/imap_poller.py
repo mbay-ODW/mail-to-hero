@@ -67,6 +67,23 @@ def _decode_payload(part: Message) -> str:
         return payload.decode("utf-8", errors="replace")
 
 
+def _quote_imap_string(term: str) -> str | None:
+    """Return a quoted IMAP SEARCH string literal for *term* if it is safe
+    to send inline, or ``None`` if the caller should fall back to an IMAP
+    literal (`{N}\\r\\n...`).
+
+    Quoting rules per RFC 3501 §4.3: backslash and double-quote inside a
+    quoted string must be backslash-escaped. Anything outside ASCII or
+    containing CR/LF must use a literal instead.
+    """
+    if not term:
+        return '""'
+    if any(ord(c) > 127 or c in "\r\n" for c in term):
+        return None  # → caller must use literal
+    escaped = term.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
 class ImapPoller:
     def __init__(self, cfg: Config) -> None:
         self._cfg = cfg
@@ -93,8 +110,23 @@ class ImapPoller:
             client.select(cfg.imap_folder)
 
             # Use SUBJECT search for an efficient server-side filter. IMAP
-            # SEARCH is case-insensitive and matches substrings.
-            typ, data = client.uid("SEARCH", None, "SUBJECT", cfg.subject_prefix)
+            # SEARCH is case-insensitive and matches substrings. The search
+            # term must be passed as a quoted IMAP string literal – otherwise
+            # any whitespace inside is interpreted as further command args
+            # (e.g. `SUBJECT Anfrage von:` → "Unknown argument VON:").
+            #
+            # Strategy: when the term contains characters that need escaping
+            # (whitespace, quote, backslash) we send it as an IMAP literal
+            # (`{N}\r\n…`) using imaplib's `literal` mechanism, which works
+            # transparently with non-ASCII (UTF-8) too. Plain ASCII terms
+            # without whitespace go via the simple quoted form.
+            quoted_term = _quote_imap_string(cfg.subject_prefix)
+            if quoted_term is None:
+                # Non-trivial term → send as a literal.
+                client.literal = cfg.subject_prefix.encode("utf-8")
+                typ, data = client.uid("SEARCH", "CHARSET", "UTF-8", "SUBJECT")
+            else:
+                typ, data = client.uid("SEARCH", None, "SUBJECT", quoted_term)
             if typ != "OK":
                 logger.warning("IMAP SEARCH returned %s: %s", typ, data)
                 return
