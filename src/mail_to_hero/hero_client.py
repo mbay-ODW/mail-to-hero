@@ -70,7 +70,13 @@ class HeroClient:
 
     @staticmethod
     def _payload_to_contact_input(p: FormPayload) -> dict[str, Any]:
-        """Map our FormPayload → HERO `CustomerInput`."""
+        """Map our FormPayload → HERO `CustomerInput`.
+
+        Field names match the HERO External-API GraphQL schema:
+            email, first_name, last_name, company_name,
+            phone_home, phone_mobile, partner_notes, source,
+            address: { street, city, zipcode }
+        """
         contact: dict[str, Any] = {}
 
         if p.email:
@@ -96,11 +102,12 @@ class HeroClient:
                 address["zipcode"] = p.zipcode
             contact["address"] = address
 
-        # `partner_notes` is currently passed verbatim under the `notes` field.
-        # If your HERO instance uses a different field (e.g. a custom field),
-        # adjust here.
         if p.partner_notes:
-            contact["notes"] = p.partner_notes
+            contact["partner_notes"] = p.partner_notes
+
+        # Tag every imported contact so it is visible in HERO that this came
+        # from the web-form mailer rather than manual entry.
+        contact["source"] = "Webformular (mail-to-hero)"
 
         return contact
 
